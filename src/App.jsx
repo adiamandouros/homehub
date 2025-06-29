@@ -1,6 +1,4 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+// import { useState } from 'react'
 import './App.css'
 
 function App() {
@@ -9,16 +7,45 @@ function App() {
   return (
     <>
       <div className='container' style={{ height: '100vh', width: '100vh' }}>
-        <iframe
-          title="Google Map"
-          width="100%"
-          height="100%"
-          style={{ border: 0 }}
-          loading="lazy"
-          allowFullScreen
-          referrerPolicy="no-referrer-when-downgrade"
-          src="https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d3148.036527969652!2d23.6484353!3d37.9765363!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1718030000000!5m2!1sen!2sus"
-        ></iframe>
+        
+        <div id="main">
+          <div id="map"></div>
+        </div>
+
+        <script async defer
+          src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDH5CokCMZs5Fh_e0VCY38NoKPflfUD7ds&callback=initMap">
+        </script>
+
+        <script>
+          function initMap(){
+            const home = {lat: 37.954604, lng: 23.710506};
+            const x = home.lat; const y = home.lng;
+            const map = new google.maps.Map(
+            document.getElementById('map'), {zoom: 17, center: home});
+            const homeMarker = new google.maps.Marker({position: home, map: map});
+
+            //Ενδιαφέρουσες στάσεις
+            const stopCodes=[
+                        240115, //1η Χαροκόπου
+                        340083, //Εφέσου (Αθήνα)
+                        240003, // Εφέσου
+                        240054, //1η Χαροκόπου (Πειραιάς)
+                        240034, //Δοϊράνης
+                        240048, //Αγ. Πάντων (Συγγρού-Φιξ)
+                        240028] //Αγ. Πάντων (Τζιτζιφιές)
+
+            for(let i=0;i<stopCodes.length;i++){
+              use('getStopNameAndXY', stopCodes[i]).then(drawStop, failure);
+            }
+
+
+            const p1=340083;
+
+            window.map=map;
+            window.markers=[];
+          }
+    </script>
+
       </div>
     </>
   )
