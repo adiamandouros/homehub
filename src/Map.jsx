@@ -1,272 +1,248 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import './Map.css'
 
 function Map() {
-  console.log('🚀 Map component is being rendered');
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const circleRef = useRef(null);
+  const pollingRef = useRef(null);
+  const transportMarkersRef = useRef([]);
   
   useEffect(() => {
-    console.log('🔥 Map component useEffect started - Attempt:', Date.now());
-    
-    // Define the initMap function FIRST before any checks
-    window.initMap = function() {
-      console.log('🗺️ initMap function called');
-      
-      // Prevent multiple initializations using global flag
-      if (window.mapInitialized) {
-        console.log('⚠️ initMap already called, skipping duplicate initialization');
-        return;
-      }
-      
-      console.log('🗺️ Google Maps object:', window.google);
-      
-      const mapElement = document.getElementById('map');
-      console.log('🗺️ Map element found:', !!mapElement);
-      
-      if (!mapElement) {
-        console.error('❌ Map element not found!');
-        return;
-      }
-      
-      // Mark as initialized at the start
-      window.mapInitialized = true;
-      console.log('🔒 Setting global initialized flag to prevent duplicates');
-      
-      // Default location (Athens) as fallback
-      const defaultLocation = {lat: 37.976, lng: 23.648};
-      
-      // Function to create map with given location
-      const createMap = (location, isUserLocation = false, accuracy = null) => {
-        console.log('🗺️ Creating map with:', { location, isUserLocation, accuracy });
-        
-        try {
-          const map = new window.google.maps.Map(mapElement, {
-            zoom: 17, 
-            center: location,
-            mapTypeId: 'roadmap'
-          });
-          
-          window.map = map;
-          console.log('✅ Map created successfully');
-          
-          // Add marker
-          new window.google.maps.Marker({
-            position: location,
-            map: map,
-            title: isUserLocation ? 'Your Location' : 'Default Location',
-            icon: isUserLocation ? {
-              url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="blue" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-              `),
-              scaledSize: new window.google.maps.Size(24, 24)
-            } : undefined
-          });
-          console.log('✅ Marker added');
-          
-          // Add accuracy circle if we have user location
-          if (isUserLocation && accuracy) {
-            new window.google.maps.Circle({
-              strokeColor: '#4285F4',
-              strokeOpacity: 0.4,
-              strokeWeight: 1,
-              fillColor: '#4285F4',
-              fillOpacity: 0.1,
-              map: map,
-              center: location,
-              radius: accuracy
-            });
-            console.log(`✅ Accuracy circle added with ${accuracy}m radius`);
-          }
-          
-        } catch (error) {
-          console.error('❌ Error creating map:', error);
+    let isMounted = true;
+
+    // Helper: Load Google Maps script
+    const loadGoogleMapsScript = () => {
+      return new Promise((resolve, reject) => {
+        if (window.google && window.google.maps) {
+          resolve();
+          return;
         }
-      };
-      
-      // Function to fetch transport data from API
-      const fetchTransportData = async (lat, lng) => {
-        const timestamp = new Date().toLocaleTimeString();
-        console.log(`🚌 [${timestamp}] Fetching transport data for: ${lat}, ${lng}`);
-        
-        try {
-          const apiUrl = `https://sonovabitc.win/api/publicTransport/localInfo?x=${lat}&y=${lng}`;
-          console.log('🚌 API URL:', apiUrl);
-          
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-          
-          const response = await fetch(apiUrl, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log(`✅ [${timestamp}] Transport data received:`, data);
-            window.transportData = data;
-            
-            // Trigger a custom event so other parts of the app can listen for updates
-            window.dispatchEvent(new CustomEvent('transportDataUpdated', { 
-              detail: { data, timestamp: Date.now() }
-            }));
-            
-            return data;
-          } else {
-            console.warn(`⚠️ [${timestamp}] API response not OK: ${response.status} ${response.statusText}`);
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-        } catch (error) {
-          if (error.name === 'AbortError') {
-            console.error(`⏰ [${timestamp}] API request timed out after 10 seconds`);
-          } else {
-            console.error(`❌ [${timestamp}] Transport API error:`, error.message);
-          }
-          return null;
+        if (document.querySelector('script[src*="maps.googleapis.com"]')) {
+          // Wait for script to load
+          const interval = setInterval(() => {
+            if (window.google && window.google.maps) {
+              clearInterval(interval);
+              resolve();
+            }
+          }, 100);
+          return;
         }
-      };
-      
-      // Process user location and create map
-      const processUserLocation = async (position) => {
-        try {
-          const userLocation = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          
-          console.log('📍 User location:', userLocation);
-          console.log('📍 Accuracy:', position.coords.accuracy + 'm');
-          
-          // Initial fetch of transport data
-          await fetchTransportData(userLocation.lat, userLocation.lng);
-          
-          // Set up polling for transport data every 20 seconds
-          const pollingInterval = setInterval(async () => {
-            console.log('🔄 Polling transport data...');
-            await fetchTransportData(userLocation.lat, userLocation.lng);
-          }, 20000); // 20 seconds
-          
-          // Store interval ID globally so it can be cleared later
-          window.transportPollingInterval = pollingInterval;
-          console.log('⏰ Transport data polling started (every 20 seconds)');
-          
-          // Create map
-          createMap(userLocation, true, position.coords.accuracy);
-          
-        } catch (error) {
-          console.error('❌ Critical error in processUserLocation:', error);
-          createMap(defaultLocation, false);
+        const script = document.createElement('script');
+        script.src =
+          'https://maps.googleapis.com/maps/api/js?key=AIzaSyDH5CokCMZs5Fh_e0VCY38NoKPflfUD7ds&loading=async';
+        script.async = true;
+        script.defer = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    };
+
+    // Helper: Get device location as accurately as possible
+    const getDeviceLocation = () => {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('Geolocation not supported'));
+          return;
         }
-      };
-      
-      // Get user location
-      if (navigator.geolocation) {
-        console.log('📍 Starting geolocation...');
-        
         navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            console.log('📍 Position obtained - Accuracy:', position.coords.accuracy + 'm');
-            await processUserLocation(position);
+          (position) => {
+            console.log('Device location:', position);
+            resolve(position);
           },
           (error) => {
-            console.warn('❌ Geolocation failed:', error.message);
-            console.log('📍 Using default location');
-            createMap(defaultLocation, false);
+            console.error('Error getting device location:', error);
+            reject(error);
           },
           {
             enableHighAccuracy: true,
             timeout: 15000,
-            maximumAge: 0
+            maximumAge: 0,
           }
         );
-      } else {
-        console.warn('❌ Geolocation not supported');
-        createMap(defaultLocation, false);
+      });
+    };
+
+    // Helper: Fetch transport data
+    const fetchTransportData = async (lat, lng) => {
+      const apiUrl = `https://sonovabitc.win/api/publicTransport/localInfo?x=${lat}&y=${lng}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[Map] API success:', data);
+          return data;
+        }
+        console.warn('[Map] API response not ok:', response.status);
+        return null;
+      } catch (err) {
+        console.error('[Map] API fetch error:', err);
+        clearTimeout(timeoutId);
+        return null;
       }
     };
 
-    // Now do the checks after initMap is defined
-    // Check if map is already initialized globally
-    if (window.mapInitialized) {
-      console.log('🗺️ Map already initialized globally, skipping useEffect');
-      return;
-    }
-    
-    // Check if script is already loading
-    if (window.googleMapsScriptLoading) {
-      console.log('⚠️ Google Maps script already loading, skipping duplicate load');
-      return;
-    }
+    // Helper: Draw or update map, marker, and accuracy circle
+    const drawMap = (location, accuracy) => {
+      if (!window.google || !window.google.maps) return;
+      if (!mapRef.current) {
+        mapRef.current = new window.google.maps.Map(document.getElementById('map'), {
+          zoom: 18,
+          center: location,
+          mapTypeId: 'roadmap',
+        });
+      } else {
+        mapRef.current.setCenter(location);
+      }
+      // Marker
+      if (markerRef.current) {
+        markerRef.current.setMap(null);
+      }
+      markerRef.current = new window.google.maps.Marker({
+        position: location,
+        map: mapRef.current,
+        title: 'Your Location',
+        icon: {
+          url:
+            'data:image/svg+xml;charset=UTF-8,' +
+            encodeURIComponent(
+              `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="blue" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>`
+            ),
+          scaledSize: new window.google.maps.Size(24, 24),
+        },
+      });
+      // Accuracy circle
+      if (circleRef.current) {
+        circleRef.current.setMap(null);
+      }
+      if (accuracy) {
+        circleRef.current = new window.google.maps.Circle({
+          strokeColor: '#4285F4',
+          strokeOpacity: 0.4,
+          strokeWeight: 1,
+          fillColor: '#4285F4',
+          fillOpacity: 0.1,
+          map: mapRef.current,
+          center: location,
+          radius: accuracy,
+        });
+      }
+    };
 
-    console.log('🔥 About to check Google Maps script loading...');
-    
-    // Check if script already exists
-    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
-    console.log('🔍 Existing Google Maps script:', !!existingScript);
-    
-    // Load Google Maps script if not already loaded
-    if (!window.google && !existingScript) {
-      console.log('📥 Loading Google Maps script...');
-      
-      // Set flag to prevent duplicate loads
-      window.googleMapsScriptLoading = true;
-      
-      const script = document.createElement('script');
-      script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDH5CokCMZs5Fh_e0VCY38NoKPflfUD7ds&loading=async&callback=initMap";
-      script.async = true;
-      script.defer = true;
-      
-      script.onload = () => {
-        console.log('✅ Google Maps script loaded successfully');
-        window.googleMapsScriptLoading = false;
-      };
-      
-      script.onerror = (error) => {
-        console.error('❌ Google Maps script failed to load:', error);
-        window.googleMapsScriptLoading = false;
-      };
-      
-      document.head.appendChild(script);
-      console.log('📥 Script added to document head');
-      
-    } else if (window.google) {
-      console.log('✅ Google Maps already loaded, calling initMap directly');
-      window.initMap();
-    } else {
-      console.log('⏳ Google Maps script already exists, waiting for it to load');
-    }
+    // Helper: Draw transport markers
+    const drawTransportMarkers = (transportData) => {
+      // 1. Clear previous transport markers
+      if (transportMarkersRef.current.length > 0) {
+        transportMarkersRef.current.forEach(marker => marker.setMap(null));
+        transportMarkersRef.current = [];
+      }
+      if (!window.google || !window.google.maps || !mapRef.current) return;
+      // 2. Iterate through transport data
+      if (Array.isArray(transportData)) {
+        transportData.forEach(obj => {
+          // 3. Check arrivals array
+          if (Array.isArray(obj.arrivals) && obj.arrivals.length > 0) {
+            console.log('Creating Marker for the stop:', obj.StopDescrEng);
+            const marker = new window.google.maps.Marker({
+              position: { lat: parseFloat(obj.StopLat), lng: parseFloat(obj.StopLng) },
+              map: mapRef.current,
+              title: obj.StopDescrEng,
+              icon: {
+                url:
+                  'data:image/svg+xml;charset=UTF-8,' +
+                  encodeURIComponent(
+                    `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="red" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>`
+                  ),
+                scaledSize: new window.google.maps.Size(20, 20),
+              },
+            });
 
-    console.log('🔥 useEffect setup complete');
+            // 1. InfoWindow content: show LineID, black text
+            const lineId = obj.arrivals[0]?.LineID ?? '';
+            const eta = obj.arrivals[0]?.btime2 ?? '';
+            const infoWindow = new window.google.maps.InfoWindow({
+              content: `
+                <div class="infowindow-content">
+                  <span class="infowindow-lineid">${lineId}</span>
+                  <span class="infowindow-eta">${eta}'</span>
+                </div>
+              `,
+              disableAutoPan: true,
+            });
 
-    // Cleanup function
+            // Open the InfoWindow above the marker
+            infoWindow.open(mapRef.current, marker);
+
+            // 3. Remove the close button (X) after InfoWindow is added to DOM
+            window.google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
+              // Hide all InfoWindow close buttons
+              document.querySelectorAll('.gm-ui-hover-effect').forEach(btn => {
+                btn.style.display = 'none';
+              });
+            });
+
+            transportMarkersRef.current.push(marker);
+          }
+        });
+      }
+    };
+
+    // Main polling function
+    const poll = async () => {
+      try {
+        const position = await getDeviceLocation();
+        if (!isMounted) return;
+        const userLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        const accuracy = position.coords.accuracy;
+        drawMap(userLocation, accuracy);
+        const transportData = await fetchTransportData(userLocation.lat, userLocation.lng);
+        drawTransportMarkers(transportData);
+      } catch {
+        // Optionally handle error (e.g., fallback to default location)
+      }
+    };
+
+    // Initialize
+    loadGoogleMapsScript()
+      .then(() => {
+        if (!isMounted) return;
+        poll();
+        pollingRef.current = setInterval(poll, 20000);
+      })
+      .catch(() => {
+        // Optionally handle script load error
+      });
+
+    // Cleanup
     return () => {
-      console.log('🧹 Cleaning up Map component');
-      
-      // Clear transport data polling interval
-      if (window.transportPollingInterval) {
-        clearInterval(window.transportPollingInterval);
-        console.log('⏹️ Transport data polling stopped');
-        delete window.transportPollingInterval;
-      }
-      
-      // Clear other global references
-      delete window.initMap;
-      if (window.mapInitialized) {
-        window.mapInitialized = false;
-      }
+      isMounted = false;
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (markerRef.current) markerRef.current.setMap(null);
+      if (circleRef.current) circleRef.current.setMap(null);
+      mapRef.current = null;
+      markerRef.current = null;
+      circleRef.current = null;
     };
   }, []);
 
   return (
-    <div className='map-container' style={{ height: '100%', width: '100%' }}>
-      <div id="main" style={{ height: '100%', width: '100%' }}>
-        <div id="map" style={{ height: '100%', width: '100%', minHeight: '400px' }}></div>
+    <div className="map-container">
+      <div id="main">
+        <div id="map"></div>
       </div>
     </div>
   );
